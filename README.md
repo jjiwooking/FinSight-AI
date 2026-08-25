@@ -1,3 +1,5 @@
+streamlit : https://finsight-ai-fx8svmj6hxftvozdjyzdyr.streamlit.app/
+
 # 📊 FinSight AI
 
 > **재무제표 이상징후 탐지 + 전표 분류를 한 곳에서 처리하는 Python 기반 재무 분석 워크스페이스**
