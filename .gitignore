@@ -1,7 +1,13 @@
 __pycache__/
 *.py[cod]
+.pytest_cache/
 .venv/
 venv/
 .env
+.env.*
 .DS_Store
-.streamlit/secrets.toml
+*.log
+*.tmp
+FinSight_Project_*.json
+FinSight_*결과*.csv
+FinSight_*수정데이터*.csv

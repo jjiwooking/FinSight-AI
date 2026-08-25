@@ -1,29 +1,59 @@
 # Changelog
 
-## V2.5 Streamlit Package
+## V2.6.1 — Blank Start + Workflow UI Recovery
 
-### Deployment packaging
-- Added `app.py` as the Streamlit Community Cloud entrypoint.
-- Embedded the existing V2.5 HTML workspace with `streamlit.components.v1.html` to preserve current UI and behavior.
-- Added `requirements.txt` with Streamlit dependency only.
-- Added `.streamlit/config.toml` for a dark, headless deployment shell.
-- Added `.gitignore` and GitHub/Streamlit deployment documentation.
-- Moved test CSVs into `sample_data/`.
-- Kept `index.html` at repository root so the same build can also be served as a plain static page.
+### Startup
+- Removed automatic sample financial data and sample transactions from the running app.
+- A new session now starts as a blank project on the Data screen.
+- Replaced the old sample-reset action with `새 빈 프로젝트`.
 
-## V2.5 Core
+### Workflow / readability
+- Restored financial account search, statement filter, included/excluded filter, and changed-only view.
+- Restored one-click navigation from summary → anomaly detail and anomaly → source data edit.
+- Added one-level workflow support through a 20-step financial edit undo stack plus source restore.
+- Reordered review queues so unreviewed, higher-priority items appear first.
+- Replaced internal English anomaly-table field names with Korean user-facing labels.
+- Reworked validation into readable error/warning/normal/info summaries with expandable details.
+- Restored transaction search, status, duplicate, and unclassified filters.
 
-- Added actual Excel/CSV transaction-file import with mapping for date, description/vendor, amount, and optional existing account.
-- Added transaction replace/append modes, source-row tracking, duplicate suspicion detection, search/status filters, and classified-transaction CSV export.
-- Replaced hardcoded-only transaction recommendation behavior with a transparent local recommender: prior approved exact-description memory first, then explicit keyword rules, otherwise unclassified.
-- Preserves original account values from imported transaction files separately from recommendations and final user selections.
-- Added multi-period financial series capture when Excel/CSV includes 3+ year columns. Latest two years remain prior/current while earlier years are retained for trend analysis.
-- Added robust trend-deviation signal using historical change median and MAD-based scaling. Pattern score is only available when at least 3 usable periods exist.
-- Integrated real pattern signal into review-priority calculation instead of displaying a permanent data-insufficient placeholder.
-- Added per-account sparkline and top multi-period trend-deviation summary.
-- Editing prior/current values also updates matching period values so stale-analysis detection remains consistent.
-- Project schema advanced to v3 and remains backward-compatible with v1/v2 projects.
+### Safety / state handling
+- PDF/DOCX values are shown as `원본 대조 필요`, and analysis is labeled `임시 결과` until confirmation.
+- Added individual and bulk source-confirmation actions for extracted document values.
+- Fixed PDF/DOCX import so old review notes and reviewed timestamps cannot remain on a newly imported document.
+- Review completion is disabled while edited financial data is stale.
+- Filtered editor saves now merge only visible rows instead of dropping hidden rows.
 
-### Product principle
-- Convenience/readability first: transaction upload avoids manual row-by-row entry; trend analysis appears only when enough evidence exists.
-- No fake AI probability: recommendation scores remain explicitly relative review scores, and local rule/memory source is shown.
+### Anomaly display
+- An anomaly must now have an explicit review reason (large change, relationship signal, or meaningful historical-pattern deviation).
+- Materiality still affects priority, but materiality alone no longer creates an anomaly.
+- This prevents total/benchmark rows from appearing as anomalies merely because they are large.
+
+### Packaging
+- Removed runtime cache folders from the release package.
+- Added regression tests for explicit anomaly reasons and blank startup.
+
+## V2.6 — Python Engine
+
+### Core migration
+- Moved financial parsing, validation, anomaly scoring, trend analysis, transaction recommendation, duplicate detection, and project serialization into Python modules.
+- Replaced the V2.5 iframe/browser engine with native Streamlit state + pandas processing.
+- Archived the old V2.5 HTML implementation under `legacy/index_v2_5.html`; it is no longer the production execution path.
+
+### Data handling
+- Added Python Excel/CSV parsing with explicit mapping confirmation.
+- Preserved Excel/CSV source row and cell references.
+- Added Python PDF/DOCX extraction with `value_confirmed=False` by default.
+- Added editable working data separated from source and analysis data.
+
+### Analysis
+- Ported deterministic priority scoring: magnitude, statement-specific materiality benchmark, relation rules, and multi-period pattern signal.
+- Ported median/MAD-based multi-period trend deviation.
+- Preserved review states only when the resulting anomaly fingerprint remains unchanged after re-analysis.
+
+### Transactions
+- Ported approved-history memory and keyword rules to Python.
+- Preserved self-leak prevention by excluding the current transaction from its own approved-memory lookup.
+- Added Python duplicate detection and editable review status.
+
+### Reliability
+- Added pytest coverage for accounting-number parsing, period mapping direction, trend spike detection, balance-sheet equation validation, anomaly output, transaction self-leak prevention, and duplicate detection.
