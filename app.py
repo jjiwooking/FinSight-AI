@@ -23,6 +23,7 @@ from core.io import (
 from core.project import load_project, serialize_project
 from core.transactions import ACCOUNT_CATALOG, refresh_recommendations
 from core.validation import validate_financials
+from core.utils import MONEY_UNITS, format_money, money_unit_multiplier
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -107,6 +108,21 @@ def safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def format_preview_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Readable upload preview only; source values are not changed."""
+    out = df.copy()
+    def _fmt(value: Any) -> Any:
+        if isinstance(value, bool) or value is None:
+            return value
+        if isinstance(value, (int, float)) and not pd.isna(value):
+            n = float(value)
+            if n.is_integer():
+                return f"{n:,.0f}"
+            return f"{n:,.4f}".rstrip("0").rstrip(".")
+        return value
+    return out.map(_fmt)
+
+
 def log_action(action: str, detail: str = "") -> None:
     st.session_state.audit_log.append(
         {"at": datetime.now().isoformat(timespec="seconds"), "action": action, "detail": detail}
@@ -139,6 +155,7 @@ def init_state() -> None:
         "data_undo_stack": [],
         "data_editor_version": 0,
         "txn_editor_version": 0,
+        "display_unit": "원",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -168,6 +185,7 @@ def reset_blank_project() -> None:
     st.session_state.data_editor_version += 1
     st.session_state.txn_editor_version += 1
     st.session_state.nav_page = "데이터"
+    st.session_state.display_unit = "원"
     log_action("PROJECT_NEW", "빈 프로젝트")
 
 
@@ -421,11 +439,22 @@ has_error = any(x["type"] == "error" for x in issues)
 stale = analysis_is_stale() if has_financial else False
 unconfirmed_count = unconfirmed_doc_count(st.session_state.analysis_rows)
 
-st.markdown('<div class="fs-brand">FinSight AI V2.6.1</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="fs-sub">Python Engine · 재무제표 이상징후 탐지 + 전표 분류 워크스페이스</div>',
-    unsafe_allow_html=True,
-)
+title_col, unit_col = st.columns([7.8, 1.7])
+with title_col:
+    st.markdown('<div class="fs-brand">FinSight AI V2.6.2</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="fs-sub">Python Engine · 재무제표 이상징후 탐지 + 전표 분류 워크스페이스</div>',
+        unsafe_allow_html=True,
+    )
+with unit_col:
+    st.selectbox(
+        "분석 금액 표시 단위",
+        list(MONEY_UNITS.keys()),
+        key="display_unit",
+        help="내부 계산과 데이터 편집은 항상 원(KRW) 단위입니다. 이 설정은 분석 화면의 표시만 바꿉니다.",
+    )
+display_unit = st.session_state.display_unit
+display_multiplier = money_unit_multiplier(display_unit)
 
 status_cols = st.columns([1.5, 1.2, 1.4, 1.2, 1.3])
 status_cols[0].caption(f"파일 · {st.session_state.file_name or '불러오기 전'}")
@@ -451,6 +480,7 @@ else:
     analysis_label = "최신"
 status_cols[3].caption(f"분석 · {analysis_label}")
 status_cols[4].caption("엔진 · Python / pandas")
+st.caption("금액 원칙 · 저장·계산·편집은 원(KRW) 기준 · 화면 숫자는 1,000,000처럼 천 단위 쉼표로 표시")
 
 if stale:
     c1, c2 = st.columns([5, 1])
@@ -610,13 +640,14 @@ elif page == "데이터":
             unit_name = ucol.selectbox(
                 "금액 단위", list(unit_options), index=list(unit_options).index(default_unit), key="fin_unit"
             )
+            st.caption("원본 파일의 단위를 선택하세요. 불러올 때 원(KRW)으로 환산해 저장하며, 이후 계산은 원 단위로만 수행합니다.")
             selections = []
             for idx, (sheet_name, df) in enumerate(pending["sheets"].items()):
                 mapping = pending["mappings"][sheet_name]
                 headers = mapping["headers"]
                 with st.expander(f"{sheet_name} · 매핑 확인", expanded=idx == 0):
                     st.dataframe(
-                        df.iloc[mapping["header_index"] : mapping["header_index"] + 6].fillna(""),
+                        format_preview_frame(df.iloc[mapping["header_index"] : mapping["header_index"] + 6].fillna("")),
                         use_container_width=True,
                         hide_index=True,
                     )
@@ -702,8 +733,8 @@ elif page == "데이터":
         else:
             c1, c2 = st.columns(2)
             statement = c1.selectbox("재무제표", ["손익계산서", "재무상태표", "현금흐름표", "기타"], index=3, key="doc_statement")
-            unit_name = c2.selectbox("금액 단위", ["원", "천원", "백만원", "억원"], key="doc_unit")
-            st.caption("PDF/DOCX 추출값은 자동으로 확정하지 않습니다. 불러온 뒤 원본 대조 상태를 별도로 표시합니다.")
+            unit_name = c2.selectbox("원본 금액 단위", ["원", "천원", "백만원", "억원"], key="doc_unit")
+            st.caption("선택한 원본 단위는 불러올 때 원(KRW)으로 환산됩니다. PDF/DOCX 추출값은 자동 확정하지 않고 원본 대조 상태를 별도로 표시합니다.")
             if st.button("문서 추출", type="primary"):
                 try:
                     multiplier = {"원": 1, "천원": 1_000, "백만원": 1_000_000, "억원": 100_000_000}[unit_name]
@@ -738,6 +769,24 @@ elif page == "데이터":
                 '<div class="fs-empty"><b>빈 프로젝트입니다.</b><br>위에서 재무 파일을 불러오면 데이터 편집, 검증, 이상징후 분석이 활성화됩니다.</div>',
                 unsafe_allow_html=True,
             )
+            with st.expander("검증용 예시 파일 다운로드", expanded=False):
+                st.caption("예시 파일은 자동으로 불러오지 않습니다. 정상 검증 / 이상징후 / 오류 검증을 각각 테스트할 수 있습니다.")
+                sample_cols = st.columns(3)
+                sample_files = [
+                    ("정상 검증", "sample_financial_valid_4year.xlsx"),
+                    ("이상징후 검증", "sample_financial_anomaly_4year.xlsx"),
+                    ("오류 검증", "sample_financial_validation_errors.xlsx"),
+                ]
+                for col, (label, filename) in zip(sample_cols, sample_files):
+                    sample_path = BASE_DIR / "sample_data" / filename
+                    if sample_path.exists():
+                        col.download_button(
+                            label,
+                            data=sample_path.read_bytes(),
+                            file_name=filename,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True,
+                        )
     else:
         st.markdown("#### 데이터 편집기")
         changed_ids = changed_financial_ids()
@@ -783,6 +832,7 @@ elif page == "데이터":
         st.caption(
             f"표시 {len(filtered)}개 / 전체 {len(st.session_state.working_rows)}개 · 초안 변경 {draft_change_count()}건"
         )
+        st.caption("편집 금액 단위: 원(KRW) · 천 단위 쉼표 표시 · 예: 1000000 → 1,000,000")
         editable_cols = ["id", "account", "statement", "prior", "current", "included"]
         editor_df = filtered[editable_cols].copy()
         visible_key = hashlib.sha1(
@@ -800,8 +850,12 @@ elif page == "데이터":
                 "statement": st.column_config.SelectboxColumn(
                     "재무제표", options=["손익계산서", "재무상태표", "현금흐름표", "기타"], required=True
                 ),
-                "prior": st.column_config.NumberColumn(st.session_state.prior_label, format="%.0f"),
-                "current": st.column_config.NumberColumn(st.session_state.current_label, format="%.0f"),
+                "prior": st.column_config.NumberColumn(
+                    f"{st.session_state.prior_label} (원)", format="localized", step=1.0, help="내부 저장 단위: 원(KRW)"
+                ),
+                "current": st.column_config.NumberColumn(
+                    f"{st.session_state.current_label} (원)", format="localized", step=1.0, help="내부 저장 단위: 원(KRW)"
+                ),
                 "included": st.column_config.CheckboxColumn("분석 포함"),
             },
             key=f"financial_editor_{st.session_state.data_editor_version}_{visible_key}",
@@ -837,6 +891,7 @@ elif page == "데이터":
             "text/csv",
             use_container_width=True,
         )
+        st.caption("CSV 내보내기 금액은 원(KRW) 단위 원값입니다. 화면 표시 단위를 바꿔도 내보내기 금액은 변하지 않습니다.")
 
         current_issues = validate_financials(
             st.session_state.working_rows, st.session_state.prior_label, st.session_state.current_label
@@ -963,8 +1018,10 @@ elif page == "이상징후 분석":
                 st.info("현재 필터에 해당하는 이상징후가 없습니다.")
             else:
                 display = filtered_anom[
-                    ["account", "statement", "change_pct", "priority", "level", "evidence_level", "검토 상태"]
+                    ["account", "statement", "prior", "current", "change_pct", "priority", "level", "evidence_level", "검토 상태"]
                 ].copy()
+                display["prior"] = display["prior"].map(lambda x: format_money(x, unit=display_unit))
+                display["current"] = display["current"].map(lambda x: format_money(x, unit=display_unit))
                 display["change_pct"] = display["change_pct"].map(
                     lambda x: None if pd.isna(x) else round(float(x), 1)
                 )
@@ -972,6 +1029,8 @@ elif page == "이상징후 분석":
                     columns={
                         "account": "계정과목",
                         "statement": "재무제표",
+                        "prior": f"{st.session_state.prior_label} ({display_unit})",
+                        "current": f"{st.session_state.current_label} ({display_unit})",
                         "change_pct": "증감률(%)",
                         "priority": "검토 우선순위",
                         "level": "수준",
@@ -999,6 +1058,13 @@ elif page == "이상징후 분석":
             )
             row = anomalies.loc[anomalies["id"].astype(int) == int(selected)].iloc[0]
             st.markdown(f"### {row['account']} · 우선순위 {row['priority']}/100")
+            a1, a2, a3 = st.columns(3)
+            a1.metric(st.session_state.prior_label, f"{format_money(row.get('prior'), unit=display_unit)} {display_unit}")
+            a2.metric(st.session_state.current_label, f"{format_money(row.get('current'), unit=display_unit)} {display_unit}")
+            a3.metric(
+                "증감률",
+                "비교 불가" if pd.isna(row.get("change_pct")) else f"{float(row.get('change_pct')):+.1f}%",
+            )
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("변동 규모", f"{int(row['magnitude'])}/20")
             c2.metric(
@@ -1019,9 +1085,11 @@ elif page == "이상징후 분석":
             )
             series = row.get("series") if isinstance(row.get("series"), dict) else {}
             if len(series) >= 3:
-                trend_df = pd.DataFrame({"기간": list(series.keys()), "금액": list(series.values())}).set_index("기간")
+                trend_df = pd.DataFrame(
+                    {"기간": list(series.keys()), f"금액 ({display_unit})": [float(v) / display_multiplier for v in series.values()]}
+                ).set_index("기간")
                 st.line_chart(trend_df)
-                st.caption(str(row.get("pattern_reason") or ""))
+                st.caption(f"차트 표시 단위: {display_unit} · " + str(row.get("pattern_reason") or ""))
 
             st.button(
                 "데이터에서 확인 / 수정",
@@ -1095,7 +1163,7 @@ elif page == "전표 분류":
         mapping = pending_txn["mappings"][sheet_name]
         headers = mapping["headers"]
         st.dataframe(
-            df.iloc[mapping["header_index"] : mapping["header_index"] + 7].fillna(""),
+            format_preview_frame(df.iloc[mapping["header_index"] : mapping["header_index"] + 7].fillna("")),
             use_container_width=True,
             hide_index=True,
         )
@@ -1159,6 +1227,15 @@ elif page == "전표 분류":
                 '<div class="fs-empty"><b>불러온 전표가 없습니다.</b><br>위에서 Excel 또는 CSV 전표 파일을 불러오면 분류 검토가 시작됩니다.</div>',
                 unsafe_allow_html=True,
             )
+            sample_txn_path = BASE_DIR / "sample_data" / "sample_transactions_validation.xlsx"
+            if sample_txn_path.exists():
+                st.download_button(
+                    "전표 검증용 예시 파일",
+                    data=sample_txn_path.read_bytes(),
+                    file_name=sample_txn_path.name,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=False,
+                )
     else:
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("승인 대기", int((txns["status"] == "대기").sum()))
@@ -1189,6 +1266,7 @@ elif page == "전표 분류":
             filtered_txns = filtered_txns[filtered_txns["final_account"].fillna("미분류") == "미분류"]
 
         st.caption(f"표시 {len(filtered_txns)}건 / 전체 {len(txns)}건")
+        st.caption("전표 금액 단위: 원(KRW) · 천 단위 쉼표 표시")
         if filtered_txns.empty:
             st.info("현재 필터에 해당하는 전표가 없습니다.")
         else:
@@ -1223,7 +1301,9 @@ elif page == "전표 분류":
                     "id": "ID",
                     "date": "일자",
                     "desc": "적요",
-                    "amount": st.column_config.NumberColumn("금액", format="%.0f"),
+                    "amount": st.column_config.NumberColumn(
+                        "금액 (원)", format="localized", step=1.0, help="전표 금액은 원(KRW) 단위로 저장됩니다."
+                    ),
                     "original_account": "원본 계정",
                     "ai_account": "추천 계정",
                     "recommendation_score": st.column_config.ProgressColumn("추천 점수", min_value=0, max_value=100),
@@ -1246,3 +1326,4 @@ elif page == "전표 분류":
             "FinSight_전표분류결과.csv",
             "text/csv",
         )
+        st.caption("분류 결과 CSV의 금액은 원(KRW) 단위 원값으로 저장됩니다.")

@@ -1,5 +1,24 @@
 # Changelog
 
+## V2.6.2 — KRW Formatting + Validation Samples
+
+### Money display / unit safety
+- Standardized internal financial and transaction calculations on KRW (원).
+- Added explicit source-unit conversion for 원 / 천원 / 백만원 / 억원 during import.
+- Financial and transaction editors now use localized thousands separators so `1000000` is displayed as `1,000,000`.
+- Added analysis display-unit selector; changing display units never changes stored or exported KRW values.
+- Added prior/current amount columns to anomaly tables and amount metrics to anomaly detail.
+- Multi-period charts are scaled to the selected display unit.
+- CSV exports explicitly remain in KRW raw values.
+
+### Validation sample files
+- Added a clean 4-year financial workbook that passes balance-sheet and cash-flow checks and produces zero anomalies under the current rules.
+- Added a balanced anomaly workbook with deliberate review signals.
+- Added an error workbook with duplicate accounts, missing value, balance-sheet mismatch, and cash-flow mismatch.
+- Added a transaction workbook with rule-based recommendations, duplicate rows, negative refund, and unclassified cases.
+- Sample workbooks use accounting-friendly `#,##0`, red-parentheses negatives, and zero-as-dash formatting.
+- Samples are downloadable but are never auto-loaded; startup remains blank.
+
 ## V2.6.1 — Blank Start + Workflow UI Recovery
 
 ### Startup
