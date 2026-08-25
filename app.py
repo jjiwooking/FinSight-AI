@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 from datetime import datetime
 from pathlib import Path
@@ -73,20 +74,86 @@ st.set_page_config(page_title="FinSight AI", page_icon="📊", layout="wide", in
 st.markdown(
     """
     <style>
-      .stApp { background: #0b1220; color: #e8eef9; }
-      .block-container { max-width: 1500px; padding-top: 1.0rem; padding-bottom: 3rem; }
+      :root { color-scheme: dark; }
+      .stApp { background:#0b1220; color:#e8eef9; }
+      .block-container {
+        max-width:1380px;
+        padding-top:4.25rem !important;
+        padding-bottom:4rem;
+        padding-left:1.5rem;
+        padding-right:1.5rem;
+      }
+      header[data-testid="stHeader"] { background:rgba(11,18,32,.94); }
       [data-testid="stMetric"] { background:#0f1828; border:1px solid #202e44; padding:12px; border-radius:10px; }
       div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border:1px solid #202e44; border-radius:10px; overflow:hidden; }
+      [data-testid="stFileUploaderDropzone"] {
+        background:#0f1828;
+        border:1px dashed #2b3a52;
+        border-radius:12px;
+        min-height:88px;
+      }
+      .fs-hero-title {
+        display:flex; align-items:center; gap:.55rem; flex-wrap:wrap;
+        margin:0; font-size:1.95rem; line-height:1.18; font-weight:800;
+        letter-spacing:-.03em; color:#f3f7ff;
+      }
+      .fs-version {
+        display:inline-flex; align-items:center; height:24px; padding:0 8px;
+        border:1px solid #33445f; border-radius:999px; color:#f4c35b;
+        font-size:.72rem; font-weight:800; letter-spacing:.02em;
+        background:#121d30;
+      }
+      .fs-sub { color:#93a4bc; font-size:.92rem; line-height:1.5; margin-top:.45rem; }
+      .fs-unit-label { color:#8e9db4; font-size:.78rem; font-weight:700; margin:.15rem 0 .35rem; }
+      .fs-status-grid {
+        display:grid; grid-template-columns:repeat(5,minmax(0,1fr));
+        gap:.55rem; margin:1.05rem 0 .55rem;
+      }
+      .fs-status {
+        background:#0f1828; border:1px solid #202e44; border-radius:10px;
+        padding:10px 12px; min-height:58px; min-width:0;
+      }
+      .fs-status-label { color:#74849a; font-size:.72rem; font-weight:700; margin-bottom:4px; }
+      .fs-status-value {
+        color:#dfe7f3; font-size:.86rem; font-weight:700; line-height:1.35;
+        white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      }
+      .fs-money-note {
+        color:#8292aa; font-size:.78rem; line-height:1.45; margin:.2rem 0 .8rem;
+      }
       .fs-muted { color:#8392a8; font-size:.9rem; }
       .fs-card { background:#0f1828; border:1px solid #202e44; border-radius:10px; padding:14px; margin:0 0 10px 0; min-height:82px; }
       .fs-high { border-left:4px solid #ef5665; }
       .fs-mid { border-left:4px solid #d49a20; }
       .fs-low { border-left:4px solid #65768e; }
-      .fs-brand { font-size:1.55rem; font-weight:800; }
-      .fs-sub { color:#8190aa; margin-top:-.35rem; margin-bottom:.7rem; }
-      .fs-empty { background:#0f1828; border:1px dashed #2b3a52; border-radius:12px; padding:24px; color:#aeb9cb; }
+      .fs-empty {
+        background:#0f1828; border:1px dashed #2b3a52; border-radius:12px;
+        padding:22px 24px; color:#aeb9cb; margin-top:1rem;
+      }
+      .fs-empty-title { color:#dce6f5; font-size:1rem; font-weight:800; margin-bottom:.35rem; }
+      .fs-empty-desc { color:#93a4bc; font-size:.9rem; line-height:1.55; }
       .fs-section-note { color:#8493aa; margin-top:-.4rem; margin-bottom:.8rem; }
+      div[data-testid="stRadio"] { margin:.35rem 0 1.2rem; }
+      div[role="radiogroup"] { gap:.45rem; flex-wrap:wrap; }
+      div[role="radiogroup"] > label {
+        background:#0f1828; border:1px solid #202e44; border-radius:9px;
+        padding:.42rem .72rem; margin:0;
+      }
+      div[role="radiogroup"] > label:has(input:checked) {
+        border-color:#d49a20; background:#172238;
+      }
+      div[role="radiogroup"] > label p { font-weight:700; }
+      div[data-testid="stExpander"] { margin-top:.65rem; }
+      h1, h2, h3, h4 { scroll-margin-top:5rem; }
       code { color:#f6c35b !important; }
+      @media (max-width:900px) {
+        .block-container { padding-top:4rem !important; padding-left:1rem; padding-right:1rem; }
+        .fs-status-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .fs-hero-title { font-size:1.7rem; }
+      }
+      @media (max-width:560px) {
+        .fs-status-grid { grid-template-columns:1fr; }
+      }
     </style>
     """,
     unsafe_allow_html=True,
@@ -439,28 +506,25 @@ has_error = any(x["type"] == "error" for x in issues)
 stale = analysis_is_stale() if has_financial else False
 unconfirmed_count = unconfirmed_doc_count(st.session_state.analysis_rows)
 
-title_col, unit_col = st.columns([7.8, 1.7])
+title_col, unit_col = st.columns([7.4, 1.6], gap="large")
 with title_col:
-    st.markdown('<div class="fs-brand">FinSight AI V2.6.2</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="fs-sub">Python Engine · 재무제표 이상징후 탐지 + 전표 분류 워크스페이스</div>',
+        '<div class="fs-hero-title">FinSight AI <span class="fs-version">V2.6.3</span></div>'
+        '<div class="fs-sub">재무제표 이상징후 탐지 · 데이터 검증 · 전표 분류를 한 곳에서 처리하는 Python 기반 워크스페이스</div>',
         unsafe_allow_html=True,
     )
 with unit_col:
+    st.markdown('<div class="fs-unit-label">분석 화면 표시 단위</div>', unsafe_allow_html=True)
     st.selectbox(
-        "분석 금액 표시 단위",
+        "분석 화면 표시 단위",
         list(MONEY_UNITS.keys()),
         key="display_unit",
-        help="내부 계산과 데이터 편집은 항상 원(KRW) 단위입니다. 이 설정은 분석 화면의 표시만 바꿉니다.",
+        label_visibility="collapsed",
+        help="내부 저장·계산·편집은 항상 원(KRW) 기준이며, 이 설정은 분석 화면의 표시만 바꿉니다.",
     )
 display_unit = st.session_state.display_unit
 display_multiplier = money_unit_multiplier(display_unit)
 
-status_cols = st.columns([1.5, 1.2, 1.4, 1.2, 1.3])
-status_cols[0].caption(f"파일 · {st.session_state.file_name or '불러오기 전'}")
-status_cols[1].caption(
-    f"기간 · {st.session_state.prior_label} ↔ {st.session_state.current_label}" if has_financial else "기간 · —"
-)
 if not has_financial:
     validation_label = "파일 대기"
 elif has_error:
@@ -469,7 +533,6 @@ elif unconfirmed_count:
     validation_label = f"원본 대조 필요 {unconfirmed_count}건"
 else:
     validation_label = "기본 검증 통과"
-status_cols[2].caption(f"검증 · {validation_label}")
 if not has_financial:
     analysis_label = "대기"
 elif stale:
@@ -478,9 +541,24 @@ elif unconfirmed_count:
     analysis_label = "임시 결과"
 else:
     analysis_label = "최신"
-status_cols[3].caption(f"분석 · {analysis_label}")
-status_cols[4].caption("엔진 · Python / pandas")
-st.caption("금액 원칙 · 저장·계산·편집은 원(KRW) 기준 · 화면 숫자는 1,000,000처럼 천 단위 쉼표로 표시")
+
+status_values = [
+    ("파일", st.session_state.file_name or "불러오기 전"),
+    ("기간", f"{st.session_state.prior_label} ↔ {st.session_state.current_label}" if has_financial else "—"),
+    ("검증", validation_label),
+    ("분석", analysis_label),
+    ("엔진", "Python / pandas"),
+]
+status_html = ''.join(
+    f'<div class="fs-status"><div class="fs-status-label">{html.escape(str(label))}</div>'
+    f'<div class="fs-status-value" title="{html.escape(str(value))}">{html.escape(str(value))}</div></div>'
+    for label, value in status_values
+)
+st.markdown(f'<div class="fs-status-grid">{status_html}</div>', unsafe_allow_html=True)
+st.markdown(
+    f'<div class="fs-money-note">기준 단위 <b>원(KRW)</b> · 모든 저장/계산/편집은 원 단위 · 분석 화면만 <b>{html.escape(display_unit)}</b> 표시 · 숫자는 1,000,000 형식</div>',
+    unsafe_allow_html=True,
+)
 
 if stale:
     c1, c2 = st.columns([5, 1])
@@ -533,7 +611,8 @@ page = st.session_state.nav_page
 if page == "업무 요약":
     if not has_financial:
         st.markdown(
-            '<div class="fs-empty"><b>아직 불러온 재무 데이터가 없습니다.</b><br>데이터 화면에서 Excel, CSV, PDF 또는 Word 파일을 불러오면 분석을 시작합니다.</div>',
+            '<div class="fs-empty"><div class="fs-empty-title">아직 불러온 재무 데이터가 없습니다.</div>'
+            '<div class="fs-empty-desc">데이터 화면에서 Excel, CSV, PDF 또는 Word 파일을 불러오면 분석을 시작합니다.</div></div>',
             unsafe_allow_html=True,
         )
         st.button("재무 데이터 불러오기", type="primary", on_click=go_to, args=("데이터",))
@@ -597,8 +676,14 @@ if page == "업무 요약":
 
 # ----------------------------- 데이터 -----------------------------
 elif page == "데이터":
-    st.subheader("재무 데이터 가져오기")
-    uploaded = st.file_uploader("Excel · CSV · PDF · Word", type=["xlsx", "xls", "csv", "pdf", "docx"], key="financial_upload")
+    st.subheader("재무 데이터")
+    st.markdown('<div class="fs-section-note">Excel, CSV, PDF 또는 Word 파일을 불러오면 매핑 확인 후 편집·검증·분석을 시작합니다.</div>', unsafe_allow_html=True)
+    uploaded = st.file_uploader(
+        "재무 파일 선택",
+        type=["xlsx", "xls", "csv", "pdf", "docx"],
+        key="financial_upload",
+        help="지원 형식: XLSX, XLS, CSV, PDF, DOCX",
+    )
     if uploaded is not None:
         upload_hash = hashlib.sha256(uploaded.getvalue()).hexdigest()
         if st.session_state.get("pending_financial_hash") != upload_hash:
@@ -766,27 +851,10 @@ elif page == "데이터":
     if st.session_state.working_rows.empty:
         if not pending:
             st.markdown(
-                '<div class="fs-empty"><b>빈 프로젝트입니다.</b><br>위에서 재무 파일을 불러오면 데이터 편집, 검증, 이상징후 분석이 활성화됩니다.</div>',
+                '<div class="fs-empty"><div class="fs-empty-title">아직 불러온 재무 데이터가 없습니다.</div>'
+                '<div class="fs-empty-desc">위의 업로드 영역에서 파일을 선택하면 계정과목·기간·금액 단위를 확인한 뒤 데이터 편집과 검증을 시작합니다.</div></div>',
                 unsafe_allow_html=True,
             )
-            with st.expander("검증용 예시 파일 다운로드", expanded=False):
-                st.caption("예시 파일은 자동으로 불러오지 않습니다. 정상 검증 / 이상징후 / 오류 검증을 각각 테스트할 수 있습니다.")
-                sample_cols = st.columns(3)
-                sample_files = [
-                    ("정상 검증", "sample_financial_valid_4year.xlsx"),
-                    ("이상징후 검증", "sample_financial_anomaly_4year.xlsx"),
-                    ("오류 검증", "sample_financial_validation_errors.xlsx"),
-                ]
-                for col, (label, filename) in zip(sample_cols, sample_files):
-                    sample_path = BASE_DIR / "sample_data" / filename
-                    if sample_path.exists():
-                        col.download_button(
-                            label,
-                            data=sample_path.read_bytes(),
-                            file_name=filename,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True,
-                        )
     else:
         st.markdown("#### 데이터 편집기")
         changed_ids = changed_financial_ids()
@@ -969,7 +1037,8 @@ elif page == "데이터":
 elif page == "이상징후 분석":
     if st.session_state.analysis_rows.empty:
         st.markdown(
-            '<div class="fs-empty"><b>분석할 데이터가 없습니다.</b><br>데이터 화면에서 재무 파일을 먼저 불러와 주세요.</div>',
+            '<div class="fs-empty"><div class="fs-empty-title">분석할 데이터가 없습니다.</div>'
+            '<div class="fs-empty-desc">데이터 화면에서 재무 파일을 먼저 불러오면 이상징후 분석이 활성화됩니다.</div></div>',
             unsafe_allow_html=True,
         )
         st.button("재무 데이터 불러오기", type="primary", on_click=go_to, args=("데이터",))
@@ -1224,18 +1293,10 @@ elif page == "전표 분류":
     if txns.empty:
         if not pending_txn:
             st.markdown(
-                '<div class="fs-empty"><b>불러온 전표가 없습니다.</b><br>위에서 Excel 또는 CSV 전표 파일을 불러오면 분류 검토가 시작됩니다.</div>',
+                '<div class="fs-empty"><div class="fs-empty-title">아직 불러온 전표가 없습니다.</div>'
+                '<div class="fs-empty-desc">위의 업로드 영역에서 Excel 또는 CSV 전표 파일을 선택하면 매핑 확인 후 분류 검토를 시작합니다.</div></div>',
                 unsafe_allow_html=True,
             )
-            sample_txn_path = BASE_DIR / "sample_data" / "sample_transactions_validation.xlsx"
-            if sample_txn_path.exists():
-                st.download_button(
-                    "전표 검증용 예시 파일",
-                    data=sample_txn_path.read_bytes(),
-                    file_name=sample_txn_path.name,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=False,
-                )
     else:
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("승인 대기", int((txns["status"] == "대기").sum()))
